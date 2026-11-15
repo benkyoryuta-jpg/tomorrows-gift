@@ -184,6 +184,9 @@ textarea.field { resize:none; min-height:130px; }
 .blk.tiny b { font-size:11px; line-height:1; }
 .blk.tiny small { display:none; }
 .blk.tiny { border-radius:6px; }
+.calb { position:absolute; left:8px; right:4px; border-radius:10px; border:1.5px dashed rgba(255,255,255,.4); background:repeating-linear-gradient(135deg,rgba(255,255,255,.13) 0 6px,rgba(255,255,255,.04) 6px 12px); color:var(--mist); font-size:12px; font-weight:800; display:flex; align-items:center; padding:0 10px; overflow:hidden; white-space:nowrap; }
+.calbtn { background:rgba(255,255,255,.12); border-radius:999px; padding:6px 12px; font-size:12px; font-weight:800; min-height:34px; white-space:nowrap; flex-shrink:0; }
+.item.cal .n { color:#5a6590; }
 
 /* ---------- sheet ---------- */
 #backdrop { position:absolute; inset:0; z-index:20; background:rgba(5,5,25,.6); opacity:0; pointer-events:none; transition:.25s; }
@@ -315,7 +318,7 @@ textarea.field { resize:none; min-height:130px; }
     <div class="pane" data-step="0">
       <div style="padding:0 20px 2px">
         <h1 style="font-size:21px"><span id="dateChip"></span>の予定</h1>
-        <div class="summary" id="sum"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="summary" id="sum"></div><button class="calbtn" id="calBtn">📅 Googleカレンダー</button></div>
       </div>
       <div class="tl-wrap" id="tlwrap"><div class="tl" id="tl"></div><div id="pet" aria-hidden="true"><div class="say" id="petSay"></div><div class="flip" id="petBody"></div></div></div>
       <div class="foot">
@@ -399,6 +402,12 @@ textarea.field { resize:none; min-height:130px; }
 </div>
 
 <script>
+/* ========== Googleカレンダー連携の設定 ==========
+   Google Cloud で作った「OAuth クライアント ID（ウェブ アプリケーション）」をここに入れる。
+   空のままだと連携ボタンは「設定がまだ」と表示するだけ。 */
+var GOOGLE_CLIENT_ID = '';
+var GOOGLE_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
+
 /* ========== 設定とデータ ========== */
 var KEY = 'tomorrows_gift_v4';
 var DAY_START = 0, DAY_END = 24, HH = 20;       // タイムライン 0:00〜24:00、画面の高さに合わせて1時間の高さを決める
@@ -440,13 +449,17 @@ function now(){ return Date.now() + (S.sim || 0); }
 function isNight(n){ var h = new Date(n).getHours(); return h >= NIGHT_HOUR || h < 5; }
 function targetDay(n){ var d = new Date(n); if (d.getHours() >= 5) d.setDate(d.getDate()+1); d.setHours(0,0,0,0); return d.getTime(); }
 function dateText(ts){ var d = new Date(ts); return (d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'.charAt(d.getDay())+'）'; }
-function fmt(h){ return Math.floor(h) + ':' + (h % 1 ? '30' : '00'); }
+function fmt(h){ var m = Math.round(h * 60); return Math.floor(m / 60) + ':' + ('0' + (m % 60)).slice(-2); }
 function durText(d){ var h = Math.floor(d), m = Math.round((d - h) * 60); return (h ? h + '時間' : '') + (m || !h ? m + '分' : ''); }
 function minsText(ms){ var m = Math.max(1, Math.ceil(ms / 60000)); return durText(m / 60); }
 function clock(n){ var d = new Date(n); return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
 function esc(s){ return String(s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); }
-function actOf(b){ return ACTS[b.a] || { k:'free', e:'✨', n:'予定', c:'#ffe29a', say:'いい時間だね' }; }
+var CAL_ACT = { k:'out', e:'🔒', n:'外せない用事', c:'#dfe3ee', say:'いってらっしゃい！' };
+function actOf(b){ if (b.cal) return CAL_ACT; return ACTS[b.a] || { k:'free', e:'✨', n:'予定', c:'#ffe29a', say:'いい時間だね' }; }
 function nameOf(b){ return b.title || actOf(b).n; }
+function calEvents(){ var c = S.draft.cal; return c && c.day0 === targetDay(now()) ? c.events : []; }
+function calBlocks(list){ return (list || []).map(function(c, i){ return { id:'c' + i, start:c.s, end:c.e, cal:true, title:c.t }; }); }
+function allBlocks(p){ return p.blocks.concat(calBlocks(p.cal)).sort(function(a, b){ return a.start - b.start; }); }
 
 /* ========== トーストと音 ========== */
 var toastT, undoFn = null;
@@ -544,6 +557,9 @@ function drawTimeline(){
     h += '<div class="hr' + (lab ? '' : ' minor') + '" style="top:' + ((i-DAY_START)*HH) + 'px">' + (lab ? '<span>' + i + ':00</span>' : '') + '</div>';
   }
   for (var k = DAY_START; k < DAY_END; k++) h += '<button class="zone' + (!bl.length && k === 9 ? ' hint' : '') + '" style="top:' + ((k-DAY_START)*HH) + 'px;height:' + HH + 'px" data-s="' + k + '" aria-label="' + k + ':00に予定を追加"></button>';
+  calEvents().forEach(function(c, i){
+    h += '<button class="calb" data-c="' + i + '" style="top:' + ((c.s-DAY_START)*HH + 1) + 'px;height:' + Math.max(14, (c.e-c.s)*HH - 2) + 'px">🔒 予定あり</button>';
+  });
   bl.forEach(function(b){
     var a = actOf(b), px = Math.max(16, (b.end - b.start) * HH - 2), cls = px < 22 ? ' row tiny' : px < 40 ? ' row' : '';
     h += '<button class="blk' + cls + (b.id === ui.fresh ? ' fresh' : '') + '" data-id="' + b.id + '" style="top:' + ((b.start-DAY_START)*HH + 1) + 'px;height:' + px + 'px;background:' + a.c + '"><b>' + a.e + ' ' + esc(nameOf(b)) + '</b><small>' + fmt(b.start) + ' – ' + fmt(b.end) + '</small></button>';
@@ -551,6 +567,7 @@ function drawTimeline(){
   tl.innerHTML = h; ui.fresh = null;
   $('dateChip').textContent = dateText(targetDay(now()));
   var tot = bl.reduce(function(s, b){ return s + b.end - b.start; }, 0);
+  setCalBtn();
   $('sum').textContent = bl.length ? bl.length + '件の予定 ・ 合計' + durText(tot) : '空いている時間をタップして追加';
 }
 window.addEventListener('resize', function(){ if (ui.cur === 'compose' && ui.step === 0) drawTimeline(); });
@@ -560,7 +577,7 @@ var pet = { x:90, y:0, tx:90, ty:0, dir:1, busy:false, act:'', t:0 };
 function petAct(a){ if (pet.act === a) return; pet.act = a; $('petBody').innerHTML = mascot(a, 50, '#6366F1', true); }
 function petLane(){
   // いちばん長い空き時間の真ん中を歩く
-  var bl = S.draft.blocks.slice().sort(function(a, b){ return a.start - b.start; }), best = [DAY_START, DAY_END], cur = DAY_START, gap = 0;
+  var bl = S.draft.blocks.concat(calBlocks(calEvents())).sort(function(a, b){ return a.start - b.start; }), best = [DAY_START, DAY_END], cur = DAY_START, gap = 0;
   bl.concat([{ start:DAY_END, end:DAY_END }]).forEach(function(b){ if (b.start - cur > gap){ gap = b.start - cur; best = [cur, b.start]; } cur = Math.max(cur, b.end); });
   return 10 + ((best[0] + best[1]) / 2 - DAY_START) * HH - 44;
 }
@@ -595,6 +612,7 @@ function petTick(){
 requestAnimationFrame(petTick);
 $('tl').addEventListener('click', function(e){
   var b = e.target.closest('.blk'); if (b){ openSheet(S.draft.blocks.filter(function(x){ return x.id == +b.dataset.id; })[0]); return; }
+  var c = e.target.closest('.calb'); if (c){ var ev = calEvents()[+c.dataset.c]; toast('🔒 ' + fmt(ev.s) + '–' + fmt(ev.e) + ' ' + ev.t + '（Googleカレンダー）'); return; }
   var z = e.target.closest('.zone'); if (z) openSheet(null, +z.dataset.s);
 });
 $('addBtn').onclick = function(){ var last = S.draft.blocks.reduce(function(m, b){ return Math.max(m, b.end); }, 0); openSheet(null, last && last <= 23.5 ? last : 9); };
@@ -619,6 +637,8 @@ function drawTimes(){
   $('selEnd').innerHTML = opts(ed.start + .5, DAY_END, ed.end);
   $('dur').textContent = '合計 ' + durText(ed.end - ed.start);
   var hit = S.draft.blocks.filter(function(x){ return x.id !== editing && x.start < ed.end && x.end > ed.start; });
+  var ch = calEvents().filter(function(c){ return c.s < ed.end && c.e > ed.start; });
+  if (ch.length){ $('warn').textContent = '⚠ Googleカレンダーの「' + ch[0].t + '」（' + fmt(ch[0].s) + '–' + fmt(ch[0].e) + '）と重なっています'; return; }
   $('warn').textContent = hit.length ? '⚠ 「' + nameOf(hit[0]) + '」と重なります。決定すると重なる部分が置きかわります' : '';
 }
 $('selStart').onchange = function(){ var d = ed.end - ed.start; ed.start = +this.value; ed.end = Math.min(DAY_END, ed.start + d); drawTimes(); };
@@ -648,7 +668,7 @@ $('saveBtn').onclick = function(){
 /* 送信 */
 $('sendBtn').onclick = function(){
   var n = now(), d0 = targetDay(n);
-  S.plan = { day0:d0, openAt:d0 + MORNING_HOUR*H, expireAt:d0 + 29*H, blocks:JSON.parse(JSON.stringify(S.draft.blocks)), letter:S.draft.letter.trim(), sentAt:n, openedAt:0 };
+  S.plan = { day0:d0, openAt:d0 + MORNING_HOUR*H, expireAt:d0 + 29*H, blocks:JSON.parse(JSON.stringify(S.draft.blocks)), cal:calEvents().slice(), letter:S.draft.letter.trim(), sentAt:n, openedAt:0 };
   S.draft = { blocks:[], letter:'' }; S.everSent = true; save(); chime('send');
   $('sending').classList.add('on');
   setTimeout(function(){ $('sending').classList.remove('on'); ui.compose = false; ui.step = 0; delete $('tl').dataset.scrolled; render(); }, 2100);
@@ -660,19 +680,19 @@ function renderSealed(){
   $('cd1').textContent = minsText(p.openAt - now());
   $('sentInfo').textContent = dateText(p.day0) + 'の予定' + p.blocks.length + '件' + (p.letter ? 'と手紙' : '') + 'を送信済み';
 }
-$('rewrite').onclick = function(){ S.draft = { blocks:JSON.parse(JSON.stringify(S.plan.blocks)), letter:S.plan.letter }; save(); ui.compose = true; ui.step = 0; render(); };
+$('rewrite').onclick = function(){ S.draft = { blocks:JSON.parse(JSON.stringify(S.plan.blocks)), letter:S.plan.letter, cal:{ day0:S.plan.day0, events:S.plan.cal || [] } }; save(); ui.compose = true; ui.step = 0; render(); };
 
 /* ========== 朝 ========== */
 function listHtml(p, hNow){
-  var sorted = p.blocks.slice().sort(function(a, b){ return a.start - b.start; });
+  var sorted = allBlocks(p);
   return sorted.map(function(b){ var a = actOf(b), st = hNow == null ? '' : hNow >= b.end ? ' done' : hNow >= b.start ? ' now' : '';
-    return '<div class="item' + st + '"><div class="t">' + fmt(b.start) + ' – ' + fmt(b.end) + '</div><div class="e" style="background:' + a.c + '">' + a.e + '</div><div class="n">' + esc(nameOf(b)) + '</div>' + (st === ' now' ? '<span class="pill">いま</span>' : '') + '</div>'; }).join('');
+    return '<div class="item' + st + (b.cal ? ' cal' : '') + '"><div class="t">' + fmt(b.start) + ' – ' + fmt(b.end) + '</div><div class="e" style="background:' + a.c + '">' + a.e + '</div><div class="n">' + esc(nameOf(b)) + '</div>' + (st === ' now' ? '<span class="pill">いま</span>' : '') + '</div>'; }).join('');
 }
 function renderMorning(){
   var p = S.plan, opened = !!p.openedAt;
   $('mEnv').style.display = opened ? 'none' : 'flex'; $('mOpen').style.display = opened ? 'flex' : 'none';
   if (!opened) return;
-  var band = ''; for (var h = DAY_START; h < DAY_END; h += .5){ var f = p.blocks.filter(function(b){ return h >= b.start && h < b.end; })[0]; band += '<i style="background:' + (f ? actOf(f).c : 'transparent') + '"></i>'; }
+  var band = ''; for (var h = DAY_START; h < DAY_END; h += .5){ var f = allBlocks(p).filter(function(b){ return h >= b.start && h < b.end; })[0]; band += '<i style="background:' + (f ? actOf(f).c : 'transparent') + '"></i>'; }
   var d = 0; function r(){ return 'class="reveal" style="animation-delay:' + (d++ * 0.3) + 's"'; }
   $('mScroll').innerHTML =
     '<div ' + r() + ' style="display:flex;align-items:center;gap:10px">' + mascot('free', 64, '#F97316', false) + '<div class="mbubble">' + dateText(p.day0) + '、昨日のキミより</div></div>'
@@ -685,7 +705,7 @@ $('startBtn').onclick = function(){ ui.letter = false; render(); };
 
 /* ========== 昼：いまの予定 ========== */
 function dayState(p){
-  var hNow = (now() - p.day0) / H, bl = p.blocks.slice().sort(function(a, b){ return a.start - b.start; });
+  var hNow = (now() - p.day0) / H, bl = allBlocks(p);
   var cur = bl.filter(function(b){ return hNow >= b.start && hNow < b.end; })[0] || null;
   var next = bl.filter(function(b){ return b.start > hNow; })[0] || null;
   var act = cur ? actOf(cur).k : next ? 'free' : (hNow >= 22 ? 'sleep' : 'done');
@@ -743,6 +763,50 @@ $('menu').onclick = function(e){
 };
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ closeSheet(); closeMenu(); } });
 document.addEventListener('click', function(e){ if ($('menu').classList.contains('on') && !e.target.closest('#menu') && !e.target.closest('#gear')) closeMenu(); });
+
+/* ========== Googleカレンダー（読み込みだけ。アプリの予定は書き込まない） ========== */
+var gTok = null, gExp = 0, tokenClient = null, calBusy = false;
+function setCalBtn(){
+  var b = $('calBtn'), n = calEvents().length, c = S.draft.cal;
+  b.textContent = calBusy ? '読み込み中…' : (c && c.day0 === targetDay(now())) ? '📅 更新（' + n + '件）' : '📅 Googleカレンダー';
+}
+function gReady(){ return !!(window.google && google.accounts && google.accounts.oauth2); }
+if (GOOGLE_CLIENT_ID){ var gs = document.createElement('script'); gs.src = 'https://accounts.google.com/gsi/client'; gs.async = true; document.head.appendChild(gs); }
+$('calBtn').onclick = function(){
+  if (!GOOGLE_CLIENT_ID){ toast('Googleカレンダー連携の設定がまだです（クライアントIDが必要）'); return; }
+  if (!gReady()){ toast('Googleに接続中です。少し待ってもう一度押してね'); return; }
+  if (gTok && Date.now() < gExp){ calFetch(); return; }
+  if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID, scope: GOOGLE_SCOPE,
+    callback: function(r){
+      if (r.error){ calBusy = false; setCalBtn(); toast('連携できませんでした（' + r.error + '）'); return; }
+      gTok = r.access_token; gExp = Date.now() + (Number(r.expires_in || 3600) - 60) * 1000; S.calLinked = true; save(); calFetch();
+    },
+    error_callback: function(e){ calBusy = false; setCalBtn(); toast(e && e.type === 'popup_closed' ? '連携をキャンセルしました' : 'Googleの画面を開けませんでした。ポップアップを許可してね'); }
+  });
+  calBusy = true; setCalBtn();
+  tokenClient.requestAccessToken({ prompt: S.calLinked ? '' : 'consent' });
+};
+function calFetch(){
+  var d0 = targetDay(now());
+  var url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=100'
+    + '&timeMin=' + encodeURIComponent(new Date(d0).toISOString()) + '&timeMax=' + encodeURIComponent(new Date(d0 + 24*H).toISOString());
+  calBusy = true; setCalBtn();
+  fetch(url, { headers:{ Authorization:'Bearer ' + gTok } }).then(function(r){
+    if (r.status === 401){ gTok = null; throw 'auth'; }
+    if (!r.ok) throw 'HTTP ' + r.status;
+    return r.json();
+  }).then(function(j){
+    var ev = [];
+    (j.items || []).forEach(function(it){
+      if (!it.start || !it.start.dateTime || it.status === 'cancelled' || it.transparency === 'transparent') return;
+      var s = Math.max(0, (new Date(it.start.dateTime) - d0) / H), e = Math.min(24, (new Date(it.end.dateTime) - d0) / H);
+      if (e > s) ev.push({ s:s, e:e, t:it.summary || '予定' });
+    });
+    S.draft.cal = { day0:d0, events:ev, at:Date.now() }; save(); calBusy = false; drawTimeline();
+    toast(ev.length ? 'Googleカレンダーから' + ev.length + '件を読み込みました' : '明日のGoogleカレンダーは空いています');
+  }).catch(function(e){ calBusy = false; setCalBtn(); toast(e === 'auth' ? '連携が切れました。もう一度押してね' : '読み込みに失敗しました（' + e + '）'); });
+}
 
 /* ========== 起動 ========== */
 mountStatic(); render();
