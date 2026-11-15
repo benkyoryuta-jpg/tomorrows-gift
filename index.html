@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d0e2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tomorrow's Gift">
+<title>Tomorrow's Gift</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one job per screen. Night = place plans, then a letter. Morning = open the envelope. Day = what is happening now, with the plan below. */
+:root {
+  --night-0:#0d0e2e; --night-1:#1b1a52;
+  --gold:#ffc94d; --gold-2:#ff9f43; --ink:#1f2340; --mist:#c9cbf5;
+  --sky-0:#bfe6ff; --sky-1:#fff3d6; --sky-2:#ffd9b0; --warm:#c46a1e;
+  --font:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Yu Gothic',sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { height:100%; margin:0; }
+body { background:#07071c; font-family:var(--font); color:#fff; display:flex; align-items:center; justify-content:center; }
+button, select { font-family:inherit; cursor:pointer; border:0; color:inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:3px solid var(--gold); outline-offset:2px; }
+
+#frame { position:relative; width:100%; max-width:430px; height:100%; overflow:hidden; background:var(--night-0); }
+@media (min-width:520px) { #frame { height:min(860px,96%); border-radius:36px; border:6px solid #262650; box-shadow:0 20px 60px rgba(0,0,0,.6); } }
+
+.screen { position:absolute; inset:0; display:none; flex-direction:column; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+.screen.on { display:flex; animation:fadeIn .4s ease both; }
+@keyframes fadeIn { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+.night { background:linear-gradient(180deg,var(--night-0),var(--night-1)); }
+.stars { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+.stars i { position:absolute; border-radius:50%; background:#fff; animation:tw 3s infinite ease-in-out; }
+@keyframes tw { 0%,100%{opacity:.15} 50%{opacity:1} }
+
+/* ---------- common ---------- */
+.topbar { position:relative; z-index:2; display:flex; align-items:center; justify-content:space-between; padding:12px 16px 4px; min-height:56px; }
+.round { width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,.1); font-size:20px; flex-shrink:0; }
+.round[hidden] { visibility:hidden; display:block; }
+.dots { display:flex; gap:8px; }
+.dots i { width:26px; height:6px; border-radius:3px; background:rgba(255,255,255,.2); transition:.3s; }
+.dots i.on { background:var(--gold); width:40px; }
+.pane { position:relative; z-index:1; flex:1; display:none; flex-direction:column; min-height:0; }
+.pane.on { display:flex; animation:fadeIn .3s ease both; }
+.body { flex:1; min-height:0; overflow-y:auto; padding:8px 20px 16px; scrollbar-width:none; }
+.body::-webkit-scrollbar { display:none; }
+.foot { padding:12px 20px 18px; display:flex; gap:10px; background:linear-gradient(0deg,var(--night-1) 60%,transparent); }
+h1 { font-size:24px; line-height:1.35; margin:0 0 2px; font-weight:800; text-wrap:balance; }
+.sub { color:var(--mist); font-size:15px; margin:0 0 16px; line-height:1.6; }
+.btn { flex:1; min-height:54px; border-radius:18px; font-size:17px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; transition:transform .1s; }
+.btn:active { transform:scale(.97); }
+.btn.gold { background:linear-gradient(90deg,var(--gold),var(--gold-2)); color:#2b1b00; box-shadow:0 6px 20px rgba(255,159,67,.35); }
+.btn.ghost { background:rgba(255,255,255,.12); color:#fff; flex:0 0 auto; padding:0 18px; }
+.btn.sky { background:linear-gradient(90deg,#3aa0ff,#2f6df0); color:#fff; box-shadow:0 6px 20px rgba(47,109,240,.35); width:100%; }
+.field { width:100%; background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.18); border-radius:18px; color:#fff; font:700 18px/1.5 var(--font); padding:14px 16px; }
+.field::placeholder { color:#9a9cd6; }
+textarea.field { resize:none; min-height:130px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.chip { background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.18); border-radius:999px; padding:10px 14px; font-size:14px; font-weight:700; min-height:44px; }
+.label { font-size:13px; font-weight:800; color:var(--gold); margin:16px 0 8px; letter-spacing:.04em; }
+.summary { font-size:13px; font-weight:700; color:var(--mist); }
+.datechip { display:inline-flex; background:rgba(255,201,77,.16); color:var(--gold); border-radius:999px; padding:4px 12px; font-size:13px; font-weight:800; margin-bottom:6px; font-variant-numeric:tabular-nums; }
+.guide { display:flex; align-items:flex-end; gap:10px; margin-bottom:10px; }
+.guide .bubble { background:rgba(255,255,255,.14); border-radius:18px 18px 18px 4px; padding:10px 14px; font-size:14px; font-weight:700; line-height:1.5; }
+
+/* ---------- mascot ---------- */
+.mascot { display:block; overflow:visible; }
+.mascot .m-prop { transform-box:fill-box; transform-origin:center; }
+.m-body { animation:m-bob 1.6s ease-in-out infinite; transform-origin:50px 90px; }
+.m-head { animation:m-tilt 2.4s ease-in-out infinite; transform-origin:50px 38px; }
+.m-arm-l { transform-origin:22px 42px; animation:m-sway 1.6s ease-in-out infinite; }
+.m-arm-r { transform-origin:78px 42px; animation:m-sway 1.6s ease-in-out infinite reverse; }
+.m-leg-l { transform-origin:40px 66px; } .m-leg-r { transform-origin:60px 66px; }
+.m-eyes { animation:m-blink 4s infinite; transform-origin:50px 24px; }
+.m-mouth { transform-origin:50px 30px; }
+.m-shut { display:none; }
+@keyframes m-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+@keyframes m-tilt { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(3deg)} }
+@keyframes m-sway { 0%,100%{transform:rotate(8deg)} 50%{transform:rotate(-8deg)} }
+@keyframes m-blink { 0%,92%,100%{transform:scaleY(1)} 95%{transform:scaleY(.1)} }
+@keyframes m-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.035)} }
+@keyframes m-wave { 0%,100%{transform:rotate(-140deg)} 50%{transform:rotate(-165deg)} }
+@keyframes m-lift { 0%,35%,100%{transform:rotate(0)} 50%,80%{transform:rotate(140deg)} }
+@keyframes m-tomouth { 0%,35%,100%{transform:translate(0,0)} 50%,80%{transform:translate(-22px,-40px)} }
+@keyframes m-typeL { from{transform:rotate(-40deg)} to{transform:rotate(-28deg)} }
+@keyframes m-typeR { from{transform:rotate(28deg)} to{transform:rotate(40deg)} }
+@keyframes m-swing { from{transform:rotate(-28deg)} to{transform:rotate(28deg)} }
+@keyframes m-step { from{transform:rotate(-13deg)} to{transform:rotate(13deg)} }
+@keyframes m-hop { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+@keyframes m-float { 0%,100%{transform:translateY(-2px)} 50%{transform:translateY(-9px)} }
+@keyframes m-chew { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.4)} }
+@keyframes m-wiggle { 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+@keyframes m-soak { 0%,100%{transform:translateY(9px)} 50%{transform:translateY(7px)} }
+@keyframes m-rise { 0%{transform:translateY(0); opacity:0} 20%{opacity:.9} 100%{transform:translateY(-26px); opacity:0} }
+@keyframes m-flick { 0%,100%{opacity:0} 50%{opacity:1} }
+@keyframes m-nod { 0%,100%{transform:rotate(0)} 50%{transform:rotate(5deg) translateY(1px)} }
+/* walk (timeline pet) */
+.a-walk .m-body { animation:m-hop .5s ease-in-out infinite; }
+.a-walk .m-leg-l, .a-walk .m-arm-r { animation:m-step .25s ease-in-out infinite alternate; }
+.a-walk .m-leg-r, .a-walk .m-arm-l { animation:m-step .25s ease-in-out infinite alternate-reverse; }
+/* sleep / rest / bath: eyes closed */
+.a-sleep .m-eyes, .a-rest .m-eyes, .a-bath .m-eyes { display:none; }
+.a-sleep .m-shut, .a-rest .m-shut, .a-bath .m-shut { display:block; }
+.a-sleep .m-body { animation:m-breathe 3s ease-in-out infinite; }
+.a-sleep .m-head, .a-sleep .m-arm-l, .a-sleep .m-arm-r { animation:none; }
+.a-sleep .m-z { animation:m-rise 2.6s ease-out infinite; }
+.a-sleep .m-z2 { animation-delay:1.3s; }
+/* wave (free time, all done) */
+.a-free .m-arm-r, .a-done .m-arm-r { animation:m-wave .6s ease-in-out infinite; }
+.a-done .m-body { animation:m-hop .5s ease-in-out infinite; }
+.a-done .m-arm-l { transform-origin:22px 42px; animation:m-wave .6s ease-in-out infinite reverse; transform:scaleX(-1); }
+/* cafe / meal: hand to mouth */
+.a-cafe .m-arm-r { animation:m-lift 3.4s ease-in-out infinite; }
+.a-cafe .m-prop { animation:m-tomouth 3.4s ease-in-out infinite; }
+.a-meal .m-arm-r { animation:m-lift 1.9s ease-in-out infinite; }
+.a-meal .m-prop { animation:m-tomouth 1.9s ease-in-out infinite; }
+.a-meal .m-mouth { animation:m-chew .38s ease-in-out infinite; }
+.a-cafe .m-body, .a-meal .m-body { animation-duration:2.6s; }
+/* work: typing */
+.a-work .m-body { animation:none; }
+.a-work .m-head { animation:m-nod 1.8s ease-in-out infinite; }
+.a-work .m-arm-l { animation:m-typeL .17s ease-in-out infinite alternate; }
+.a-work .m-arm-r { animation:m-typeR .21s ease-in-out infinite alternate; }
+/* run */
+.a-run .m-body { animation:m-hop .3s ease-in-out infinite; }
+.a-run .m-leg-l, .a-run .m-arm-r { animation:m-swing .3s ease-in-out infinite alternate; }
+.a-run .m-leg-r, .a-run .m-arm-l { animation:m-swing .3s ease-in-out infinite alternate-reverse; }
+.a-run .m-prop { animation:m-flick .6s ease-in-out infinite; }
+/* outing: walk with a bag */
+.a-out .m-body { animation-duration:.9s; }
+.a-out .m-leg-l, .a-out .m-arm-l { animation:m-step .45s ease-in-out infinite alternate; }
+.a-out .m-leg-r { animation:m-step .45s ease-in-out infinite alternate-reverse; }
+.a-out .m-arm-r { animation:none; }
+.a-out .m-prop { animation:m-wiggle .9s ease-in-out infinite; }
+/* read / play: both hands hold something */
+.a-read .m-arm-l, .a-play .m-arm-l { animation:none; transform:rotate(-34deg); }
+.a-read .m-arm-r, .a-play .m-arm-r { animation:none; transform:rotate(34deg); }
+.a-read .m-body { animation-duration:3.2s; }
+.a-read .m-head { animation:m-nod 3.2s ease-in-out infinite; }
+.a-play .m-body { animation:m-wiggle .5s ease-in-out infinite; }
+.a-play .m-arm-l { animation:m-typeL .15s ease-in-out infinite alternate; }
+.a-play .m-arm-r { animation:m-typeR .19s ease-in-out infinite alternate; }
+.a-play .m-prop { animation:m-wiggle .25s ease-in-out infinite; }
+/* rest: float */
+.a-rest .m-body { animation:m-float 4s ease-in-out infinite; }
+.a-rest .m-head { animation:none; }
+.a-rest .m-arm-l { animation:none; transform:rotate(24deg); }
+.a-rest .m-arm-r { animation:none; transform:rotate(-24deg); }
+.a-rest .m-prop { animation:m-flick 2s ease-in-out infinite; }
+/* bath */
+.a-bath .m-body { animation:m-soak 3s ease-in-out infinite; }
+.a-bath .m-head { animation-duration:4s; }
+.a-bath .m-bub { animation:m-rise 2.4s ease-out infinite; }
+.a-bath .m-bub2 { animation-delay:.8s; } .a-bath .m-bub3 { animation-delay:1.6s; }
+.a-bath .m-prop { animation:m-wiggle 2s ease-in-out infinite; }
+
+/* ---------- timeline (compose) ---------- */
+.tl-wrap { flex:1; min-height:0; overflow:hidden; padding:10px 16px 10px; position:relative; }
+#pet { position:absolute; left:0; top:0; width:50px; height:50px; pointer-events:none; z-index:3; will-change:transform; filter:drop-shadow(0 3px 6px rgba(0,0,0,.35)); }
+#pet .flip { transition:transform .25s; }
+#pet.left .flip { transform:scaleX(-1); }
+#pet .say { position:absolute; bottom:52px; right:4px; white-space:nowrap; background:#fff; color:var(--ink); font-size:12px; font-weight:800; padding:4px 10px; border-radius:12px; opacity:0; transition:opacity .25s; }
+#pet .say.on { opacity:1; }
+.tl-wrap::-webkit-scrollbar { display:none; }
+.tl { position:relative; margin-left:46px; border-left:2px solid rgba(255,255,255,.18); }
+.tl .hr { position:absolute; left:0; right:0; border-top:1px solid rgba(255,255,255,.08); }
+.tl .hr.half { border-top:1px dashed rgba(255,255,255,.06); }
+.tl .hr span { position:absolute; left:-52px; top:-8px; width:42px; text-align:right; font-size:12px; font-weight:700; color:#9a9cd6; font-variant-numeric:tabular-nums; line-height:16px; }
+.tl .hr.minor { border-top-color:rgba(255,255,255,.05); }
+.tl .zone { position:absolute; left:0; right:0; background:transparent; border-radius:10px; }
+.tl .zone:active { background:rgba(255,201,77,.18); }
+.tl .zone.hint::after { content:'＋ 空いている時間をタップして予定を置く'; position:absolute; inset:1px 4px 1px 8px; pointer-events:none; display:flex; align-items:center; padding-left:12px; color:#8f92d8; font-size:12px; font-weight:700; border:2px dashed rgba(255,255,255,.2); border-radius:12px; }
+.blk { position:absolute; left:8px; right:4px; border-radius:14px; padding:6px 12px; text-align:left; color:#1c1f3a; overflow:hidden; display:flex; flex-direction:column; justify-content:center; box-shadow:0 3px 10px rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.55); }
+.blk.fresh { animation:pop .35s cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes pop { from{transform:scale(.85); opacity:0} to{transform:none; opacity:1} }
+.blk b { font-size:15px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+.blk small { font-size:12px; font-weight:700; opacity:.7; font-variant-numeric:tabular-nums; }
+.blk.row { flex-direction:row; align-items:center; justify-content:flex-start; gap:8px; padding:0 10px; border-radius:9px; }
+.blk.row b { font-size:13px; }
+.blk.tiny b { font-size:11px; line-height:1; }
+.blk.tiny small { display:none; }
+.blk.tiny { border-radius:6px; }
+
+/* ---------- sheet ---------- */
+#backdrop { position:absolute; inset:0; z-index:20; background:rgba(5,5,25,.6); opacity:0; pointer-events:none; transition:.25s; }
+#backdrop.on { opacity:1; pointer-events:auto; }
+#sheet { position:absolute; left:0; right:0; bottom:0; z-index:21; background:#24235f; border-radius:28px 28px 0 0; padding:10px 20px calc(18px + env(safe-area-inset-bottom)); transform:translateY(105%); transition:transform .3s cubic-bezier(.3,1,.4,1); max-height:94%; overflow-y:auto; visibility:hidden; }
+#sheet.on { transform:none; visibility:visible; }
+.handle { width:44px; height:5px; border-radius:3px; background:rgba(255,255,255,.3); margin:0 auto 6px; }
+.sheethead { display:flex; align-items:center; justify-content:space-between; }
+.sheethead h2 { font-size:19px; margin:0; }
+.sheethead .round { width:40px; height:40px; font-size:16px; }
+.acts { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.act { background:rgba(255,255,255,.08); border:2px solid transparent; border-radius:16px; padding:8px 4px; font-size:13px; font-weight:800; display:flex; flex-direction:column; align-items:center; gap:2px; min-height:62px; }
+.act span { font-size:24px; }
+.act.on { border-color:var(--gold); background:rgba(255,201,77,.18); }
+.times { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:end; }
+.times label { display:block; font-size:13px; font-weight:800; color:var(--gold); margin:16px 0 8px; }
+.times .arrow { font-size:20px; font-weight:800; color:var(--mist); padding-bottom:14px; }
+.tsel { -webkit-appearance:none; appearance:none; width:100%; min-height:54px; background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.2); border-radius:16px; color:#fff; font:800 22px var(--font); padding:8px 12px; text-align:center; text-align-last:center; font-variant-numeric:tabular-nums; }
+.tsel option { color:#111; }
+.warn { color:#ffb4a2; font-size:13px; font-weight:700; margin:6px 0 0; min-height:18px; }
+
+/* ---------- send / sealed ---------- */
+#sending { position:absolute; inset:0; z-index:30; background:var(--night-0); display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; gap:10px; }
+#sending.on { display:flex; }
+#sending .env { font-size:92px; animation:fly 2s cubic-bezier(.5,0,.8,.4) forwards; }
+@keyframes fly { 0%{transform:translateY(0) scale(1)} 25%{transform:translateY(14px) scale(1.05)} 100%{transform:translateY(-420px) scale(.3) rotate(18deg); opacity:0} }
+.center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 24px 24px; gap:14px; position:relative; z-index:1; }
+.card { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:22px; padding:16px 20px; width:100%; }
+.big { font-size:34px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
+.linkbtn { background:none; color:var(--mist); text-decoration:underline; font-size:14px; font-weight:700; padding:10px; min-height:44px; }
+
+/* ---------- morning ---------- */
+.morning { background:linear-gradient(180deg,var(--sky-0),var(--sky-1) 55%,var(--sky-2)); color:var(--ink); }
+.envelope { width:min(280px,76%); aspect-ratio:1.45; border-radius:24px; border:5px solid #fff; background:linear-gradient(135deg,#fff1cf,#ffd9a8); box-shadow:0 14px 36px rgba(255,140,60,.35); position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; animation:glow 2.4s ease-in-out infinite; color:var(--ink); }
+.envelope::before { content:''; position:absolute; top:0; left:0; right:0; height:56%; background:rgba(255,184,100,.55); clip-path:polygon(0 0,50% 80%,100% 0); }
+.envelope .seal { position:relative; width:62px; height:62px; border-radius:50%; background:linear-gradient(135deg,#ff6b6b,#d62f4b); border:4px solid #ffd0d0; display:flex; align-items:center; justify-content:center; font-size:28px; }
+.envelope .tap { position:relative; background:#fff; border-radius:999px; padding:6px 16px; font-size:14px; font-weight:800; }
+@keyframes glow { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+.mbubble { background:#fff; color:var(--ink); border-radius:18px; padding:10px 16px; font-size:15px; font-weight:800; box-shadow:0 4px 14px rgba(0,0,0,.08); }
+.mscroll { flex:1; min-height:0; overflow-y:auto; padding:10px 18px 110px; display:flex; flex-direction:column; gap:14px; scrollbar-width:none; }
+.mscroll::-webkit-scrollbar { display:none; }
+.reveal { animation:rise .6s cubic-bezier(.2,.9,.3,1) backwards; }
+@keyframes rise { from{opacity:0; transform:translateY(22px)} to{opacity:1; transform:none} }
+.paper { background:#fff; border-radius:24px; padding:16px 18px; box-shadow:0 6px 20px rgba(160,100,40,.15); color:var(--ink); }
+.paper .from { font-size:13px; font-weight:800; color:var(--warm); margin-bottom:8px; }
+.paper p { margin:0; font-size:18px; font-weight:800; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
+.band { display:flex; height:14px; border-radius:7px; overflow:hidden; background:#f3e6d2; margin:4px 0 4px; }
+.band i { flex:1; }
+.band-lab { display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#a0866a; font-variant-numeric:tabular-nums; }
+.item { display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid #f1e3cf; }
+.item:first-child { border-top:0; }
+.item .t { width:88px; font-size:13px; font-weight:800; color:var(--warm); font-variant-numeric:tabular-nums; flex-shrink:0; }
+.item .e { width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.item .n { font-size:16px; font-weight:800; line-height:1.4; flex:1; min-width:0; overflow-wrap:anywhere; }
+.item.done { opacity:.45; }
+.item.done .n { text-decoration:line-through; }
+.item .pill { font-size:11px; font-weight:800; background:var(--gold); color:#2b1b00; border-radius:999px; padding:3px 9px; flex-shrink:0; }
+.item.now { background:#fff7e0; margin:0 -10px; padding:11px 10px; border-radius:14px; border-top-color:transparent; }
+.item.now + .item { border-top-color:transparent; }
+.mfoot { position:absolute; left:0; right:0; bottom:0; padding:14px 18px calc(18px + env(safe-area-inset-bottom)); background:linear-gradient(0deg,#ffe3c4 65%,transparent); }
+
+/* ---------- day ---------- */
+.day { background:linear-gradient(180deg,#dff0ff,#f6f9ff 45%,#eef1fa); color:var(--ink); }
+.dhead { padding:20px 64px 6px 20px; font-size:14px; font-weight:800; color:#5a6590; font-variant-numeric:tabular-nums; }
+.dscroll { flex:1; min-height:0; overflow-y:auto; padding:6px 18px 18px; display:flex; flex-direction:column; gap:14px; scrollbar-width:none; }
+.dscroll::-webkit-scrollbar { display:none; }
+.dscroll > *, .mscroll > * { flex-shrink:0; }
+.nowcard { background:#fff; border-radius:26px; padding:16px 16px 16px 8px; box-shadow:0 8px 24px rgba(60,80,140,.14); display:flex; align-items:center; gap:6px; }
+.nowcard .who { width:116px; flex-shrink:0; display:flex; justify-content:center; padding-top:8px; }
+.nowcard .what { flex:1; min-width:0; }
+.nowcard .k { font-size:12px; font-weight:800; color:#3d4bd0; font-variant-numeric:tabular-nums; }
+.nowcard h2 { margin:2px 0 4px; font-size:21px; line-height:1.35; overflow-wrap:anywhere; text-wrap:balance; }
+.nowcard .say { font-size:13px; font-weight:700; color:#6b7399; margin:0 0 8px; }
+.nowcard .left { font-size:13px; font-weight:800; color:var(--warm); font-variant-numeric:tabular-nums; }
+.bar { height:8px; border-radius:4px; background:#e8ecf8; overflow:hidden; margin-bottom:6px; }
+.bar i { display:block; height:100%; border-radius:4px; background:linear-gradient(90deg,var(--gold),var(--gold-2)); transition:width .6s; }
+.charm { background:#fff; border-radius:22px; padding:14px 18px 14px 22px; box-shadow:0 6px 20px rgba(60,80,140,.1); position:relative; overflow:hidden; }
+.charm::before { content:''; position:absolute; left:0; top:0; bottom:0; width:6px; background:linear-gradient(180deg,var(--gold),var(--gold-2)); }
+.charm .k { font-size:12px; font-weight:800; color:var(--warm); margin-bottom:4px; }
+.charm p { margin:0; font-size:16px; font-weight:800; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
+.day .paper { box-shadow:0 6px 20px rgba(60,80,140,.1); }
+.dfoot { padding:10px 18px calc(16px + env(safe-area-inset-bottom)); text-align:center; font-size:13px; font-weight:700; color:#5a6590; line-height:1.6; }
+.dfoot b { color:#3d4bd0; font-variant-numeric:tabular-nums; }
+.dfoot .linkbtn { color:#3d4bd0; }
+.empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:12px; padding:0 10px; }
+.empty h2 { margin:0; font-size:22px; }
+.empty p { margin:0; font-size:15px; font-weight:700; color:#5a6590; line-height:1.7; }
+
+/* ---------- menu / toast ---------- */
+#gear { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:14px; z-index:40; width:40px; height:40px; border-radius:50%; background:rgba(120,120,170,.28); font-size:16px; }
+#simBadge { position:absolute; top:calc(22px + env(safe-area-inset-top)); right:62px; z-index:39; background:#d62f4b; color:#fff; font-size:11px; font-weight:800; border-radius:999px; padding:2px 8px; display:none; font-variant-numeric:tabular-nums; pointer-events:none; }
+#menu { position:absolute; top:calc(58px + env(safe-area-inset-top)); right:10px; z-index:41; background:#14143a; border:1px solid #3a3a80; border-radius:16px; padding:6px; display:none; flex-direction:column; min-width:230px; box-shadow:0 12px 30px rgba(0,0,0,.5); color:#fff; }
+#menu.on { display:flex; }
+#menu button { background:none; text-align:left; padding:11px 12px; font-size:14px; font-weight:700; border-radius:10px; min-height:44px; }
+#menu button:active { background:rgba(255,255,255,.12); }
+#menu em { font-style:normal; font-size:11px; color:#8f92d8; padding:8px 12px 2px; border-top:1px solid #2c2c66; margin-top:4px; }
+#toast { position:absolute; left:16px; right:16px; top:calc(14px + env(safe-area-inset-top)); z-index:50; background:#fff; color:var(--ink); border-radius:16px; padding:10px 12px 10px 16px; font-size:14px; font-weight:800; box-shadow:0 8px 24px rgba(0,0,0,.3); transform:translateY(-260%); opacity:0; transition:transform .4s cubic-bezier(.3,1.3,.5,1), opacity .3s; display:flex; align-items:center; gap:10px; min-height:48px; }
+#toast.on { transform:none; opacity:1; }
+#toast span { flex:1; }
+#toast button { background:#1f2340; color:#fff; border-radius:10px; padding:8px 12px; font-size:13px; font-weight:800; display:none; }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
+</style>
+</head>
+<body>
+<div id="frame">
+  <button id="gear" aria-label="メニュー" aria-expanded="false">⚙</button>
+  <div id="simBadge"></div>
+  <div id="menu">
+    <button data-m="sound" id="mSound"></button>
+    <em>デモ：時刻を変えて試す</em>
+    <button data-m="night">🌙 夜 21:30 にする</button>
+    <button data-m="morning">☀️ 次の朝 7:00 にする</button>
+    <button data-m="plus">⏩ 1時間進める</button>
+    <button data-m="real">🕒 実際の時刻に戻す</button>
+    <button data-m="sample">📝 サンプルの予定を入れる</button>
+    <button data-m="wipe" id="mWipe">🗑 データを全部消す</button>
+  </div>
+  <div id="toast" role="status"><span id="toastMsg"></span><button id="toastUndo">元に戻す</button></div>
+
+  <!-- ===== 夜：予定 → 手紙 ===== -->
+  <section id="s-compose" class="screen night">
+    <div class="stars"></div>
+    <div class="topbar">
+      <button class="round" id="back" aria-label="戻る">‹</button>
+      <div class="dots" aria-hidden="true"><i></i><i></i></div>
+      <span style="width:44px"></span>
+    </div>
+
+    <div class="pane" data-step="0">
+      <div style="padding:0 20px 2px">
+        <h1 style="font-size:21px"><span id="dateChip"></span>の予定</h1>
+        <div class="summary" id="sum"></div>
+      </div>
+      <div class="tl-wrap" id="tlwrap"><div class="tl" id="tl"></div><div id="pet" aria-hidden="true"><div class="say" id="petSay"></div><div class="flip" id="petBody"></div></div></div>
+      <div class="foot">
+        <button class="btn ghost" id="addBtn">＋ 追加</button>
+        <button class="btn gold" id="nextBtn">次へ</button>
+      </div>
+    </div>
+
+    <div class="pane" data-step="1">
+      <div class="body">
+        <div class="guide"><div id="gMascot"></div><div class="bubble">最後に、朝の自分へ<br>ひとこと送ろう</div></div>
+        <h1>明日の自分に、なんて伝える？</h1>
+        <p class="sub">朝いちばんに読む手紙です。書かなくても送れます。</p>
+        <textarea id="letter" class="field" maxlength="120" placeholder="例：朝のコーヒーはゆっくり飲んでね。午後のタルト、楽しみ！"></textarea>
+        <div class="chips" id="letterChips"></div>
+      </div>
+      <div class="foot" style="flex-direction:column;gap:8px">
+        <div class="summary" id="sendSum" style="text-align:center"></div>
+        <button class="btn gold" id="sendBtn" style="flex:0 0 auto">✉️ 明日の自分に送る</button>
+      </div>
+    </div>
+
+    <div id="backdrop"></div>
+    <div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1">
+      <div class="handle"></div>
+      <div class="sheethead"><h2 id="sheetTitle">予定を追加</h2><button class="round" id="sheetClose" aria-label="閉じる">✕</button></div>
+      <div class="label" style="margin-top:8px">なにをする？</div>
+      <div class="acts" id="acts"></div>
+      <input id="btitle" class="field" style="margin-top:10px;font-size:16px;padding:12px 14px" type="text" maxlength="24" placeholder="くわしく書く（任意）" autocomplete="off">
+      <div class="times">
+        <div><label for="selStart">何時から</label><select class="tsel" id="selStart"></select></div>
+        <div class="arrow">→</div>
+        <div><label for="selEnd">何時まで</label><select class="tsel" id="selEnd"></select></div>
+      </div>
+      <div class="summary" id="dur" style="margin-top:10px"></div>
+      <div class="warn" id="warn"></div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="btn ghost" id="delBtn" style="display:none;color:#ffb4a2">削除</button>
+        <button class="btn gold" id="saveBtn">これで決定</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="sending"><div class="env">✉️</div><h2 style="color:var(--gold);margin:0">明日の自分に送信中…</h2><p class="sub" style="margin:0">おやすみなさい</p></div>
+
+  <!-- ===== 送信後 ===== -->
+  <section id="s-sealed" class="screen night">
+    <div class="stars"></div>
+    <div class="center">
+      <div id="sMascot"></div>
+      <h1>おやすみなさい 🌙</h1>
+      <p class="sub" style="margin:0">朝6時に、昨日のキミから手紙が届くよ。</p>
+      <div class="card" style="text-align:center">
+        <div class="sub" style="margin:0 0 4px;font-size:13px">届くまで</div>
+        <div class="big" id="cd1"></div>
+        <div class="sub" style="margin:6px 0 0;font-size:13px" id="sentInfo"></div>
+      </div>
+      <button class="linkbtn" id="rewrite">予定を書き直す</button>
+    </div>
+  </section>
+
+  <!-- ===== 朝 ===== -->
+  <section id="s-morning" class="screen morning">
+    <div class="center" id="mEnv">
+      <div id="eMascot"></div>
+      <div class="mbubble">おはよう！昨日のキミから手紙が届いてるよ</div>
+      <button class="envelope" id="openBtn" aria-label="手紙を開ける"><span class="seal">💌</span><span class="tap">タップして開く</span></button>
+    </div>
+    <div id="mOpen" style="display:none;flex:1;min-height:0;flex-direction:column;position:relative">
+      <div class="mscroll" id="mScroll"></div>
+      <div class="mfoot"><button class="btn sky" id="startBtn">🙌 今日を始める</button></div>
+    </div>
+  </section>
+
+  <!-- ===== 昼 ===== -->
+  <section id="s-day" class="screen day">
+    <div class="dhead" id="dHead"></div>
+    <div class="dscroll" id="dBody"></div>
+    <div class="dfoot" id="dFoot"></div>
+  </section>
+</div>
+
+<script>
+/* ========== 設定とデータ ========== */
+var KEY = 'tomorrows_gift_v4';
+var DAY_START = 0, DAY_END = 24, HH = 20;       // タイムライン 0:00〜24:00、画面の高さに合わせて1時間の高さを決める
+var MORNING_HOUR = 6, NIGHT_HOUR = 21, H = 3600000;
+var ACTS = [
+  { k:'cafe', e:'☕', n:'カフェ',   c:'#ffb3d1', say:'ふぅ…おいしい' },
+  { k:'work', e:'💻', n:'作業',     c:'#8fd3ff', say:'集中、集中…！' },
+  { k:'run',  e:'🏃', n:'運動',     c:'#ffd76a', say:'いい汗かいてる！' },
+  { k:'meal', e:'🍳', n:'ごはん',   c:'#ffb27a', say:'もぐもぐ…' },
+  { k:'read', e:'📖', n:'読書',     c:'#9be8c0', say:'つづきが気になる' },
+  { k:'bath', e:'🛁', n:'お風呂',   c:'#c3b5ff', say:'あったまる〜' },
+  { k:'play', e:'🎮', n:'あそぶ',   c:'#ff9ea0', say:'たのしい！' },
+  { k:'out',  e:'🛍️', n:'おでかけ', c:'#a8e86f', say:'おでかけ日和だね' },
+  { k:'rest', e:'🧘', n:'休憩',     c:'#b9e3ff', say:'ひとやすみ…' }
+];
+var PROPS = { cafe:['☕',86,72,16], meal:['🍙',86,72,15], work:['💻',50,76,30], read:['📖',50,70,24], play:['🎮',50,70,22],
+              out:['🛍️',88,80,17], run:['💦',86,22,12], rest:['✨',50,2,12], bath:['🦆',72,64,12], done:['🎉',88,16,15] };
+var LETTERS = ['ゆっくりでいいよ','ご褒美、楽しみだね','深呼吸してスタートしよう','できたことを数えよう'];
+var SAMPLE = [
+  { start:7,  end:8.5,  a:3, title:'朝ごはんとコーヒー' },
+  { start:9,  end:12,   a:1, title:'午前の集中タイム' },
+  { start:12, end:13,   a:3, title:'お昼ごはん' },
+  { start:14, end:15.5, a:0, title:'駅前のカフェでタルト' },
+  { start:16, end:17.5, a:4, title:'読みかけの本' },
+  { start:18, end:19,   a:2, title:'夕暮れのランニング' },
+  { start:19.5, end:20.5, a:6, title:'ゲーム' },
+  { start:21, end:22,   a:5, title:'ゆっくりお風呂' }
+];
+function blank(){ return { draft:{ blocks:[], letter:'' }, plan:null, seq:1, everSent:false, sound:true, sim:0 }; }
+var S = load();
+function load(){ try { var s = localStorage.getItem(KEY); if (s) { var o = JSON.parse(s); if (o && o.draft) return o; } } catch(e){} return blank(); }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+var $ = function(id){ return document.getElementById(id); };
+var ui = { compose:false, letter:false, step:0, fresh:null, cur:'' };
+var editing = null, ed = null, daySig = '';
+
+/* ========== 時刻 ========== */
+function now(){ return Date.now() + (S.sim || 0); }
+function isNight(n){ var h = new Date(n).getHours(); return h >= NIGHT_HOUR || h < 5; }
+function targetDay(n){ var d = new Date(n); if (d.getHours() >= 5) d.setDate(d.getDate()+1); d.setHours(0,0,0,0); return d.getTime(); }
+function dateText(ts){ var d = new Date(ts); return (d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'.charAt(d.getDay())+'）'; }
+function fmt(h){ return Math.floor(h) + ':' + (h % 1 ? '30' : '00'); }
+function durText(d){ var h = Math.floor(d), m = Math.round((d - h) * 60); return (h ? h + '時間' : '') + (m || !h ? m + '分' : ''); }
+function minsText(ms){ var m = Math.max(1, Math.ceil(ms / 60000)); return durText(m / 60); }
+function clock(n){ var d = new Date(n); return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
+function esc(s){ return String(s).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); }
+function actOf(b){ return ACTS[b.a] || { k:'free', e:'✨', n:'予定', c:'#ffe29a', say:'いい時間だね' }; }
+function nameOf(b){ return b.title || actOf(b).n; }
+
+/* ========== トーストと音 ========== */
+var toastT, undoFn = null;
+function toast(msg, undo){
+  $('toastMsg').textContent = msg; undoFn = undo || null;
+  $('toastUndo').style.display = undo ? 'block' : 'none';
+  $('toast').classList.add('on'); clearTimeout(toastT);
+  toastT = setTimeout(function(){ $('toast').classList.remove('on'); undoFn = null; }, undo ? 5000 : 2600);
+}
+$('toastUndo').onclick = function(){ if (undoFn) undoFn(); undoFn = null; $('toast').classList.remove('on'); };
+var ac;
+function chime(kind){
+  if (!S.sound) return;
+  try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume();
+    var notes = kind === 'send' ? [523,659,784,1047] : [440,554,659,880];
+    notes.forEach(function(f, i){ var o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.value = f; o.connect(g); g.connect(ac.destination);
+      var t = ac.currentTime + i * 0.09; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5); o.start(t); o.stop(t + 0.55); });
+  } catch(e){}
+}
+
+/* ========== マスコット ========== */
+function mascot(act, size, color, cap){
+  var p = PROPS[act], x = '';
+  if (act === 'bath') x += '<rect x="14" y="62" width="72" height="30" rx="12" fill="#fff" stroke="#b9c2e8" stroke-width="2.5"/><rect x="10" y="58" width="80" height="9" rx="4.5" fill="#fff" stroke="#b9c2e8" stroke-width="2.5"/>'
+    + '<circle class="m-bub" cx="26" cy="56" r="4" fill="#cfe8ff"/><circle class="m-bub m-bub2" cx="82" cy="54" r="3" fill="#cfe8ff"/><circle class="m-bub m-bub3" cx="18" cy="50" r="2.5" fill="#cfe8ff"/>';
+  if (act === 'sleep') x += '<text class="m-z" x="74" y="14" font-size="13" fill="#c9cbf5" font-weight="800">z</text><text class="m-z m-z2" x="84" y="6" font-size="10" fill="#c9cbf5" font-weight="800">z</text>';
+  if (p) x += '<text class="m-prop" x="' + p[1] + '" y="' + p[2] + '" font-size="' + p[3] + '" text-anchor="middle">' + p[0] + '</text>';
+  var hat = cap ? '<path d="M31 16C31 10 42 3 56 5C65 6 72 12 75 18L68 20L31 18Z" fill="#818CF8" stroke="#312E81" stroke-width="2"/><circle cx="76" cy="19" r="4" fill="#FDE047"/>' : '';
+  return '<svg class="mascot a-' + act + '" width="' + size + '" height="' + size + '" viewBox="0 0 100 100" aria-hidden="true">'
+   + '<ellipse cx="50" cy="94" rx="24" ry="4.5" fill="rgba(0,0,0,.18)"/><g class="m-body">'
+   + '<g class="m-leg-l"><rect x="33" y="66" width="15" height="22" rx="3" fill="#3B82F6" stroke="#1E3A8A" stroke-width="2.5"/></g>'
+   + '<g class="m-leg-r"><rect x="52" y="66" width="15" height="22" rx="3" fill="#2563EB" stroke="#1E3A8A" stroke-width="2.5"/></g>'
+   + '<rect x="30" y="38" width="40" height="30" rx="4" fill="' + color + '" stroke="#1b1b4a" stroke-width="2.5"/><circle cx="50" cy="53" r="5" fill="#FDE047"/>'
+   + '<g class="m-arm-l"><rect x="16" y="40" width="12" height="24" rx="3" fill="#FBBF24" stroke="#92400E" stroke-width="2.5"/></g>'
+   + '<g class="m-arm-r"><rect x="72" y="40" width="12" height="24" rx="3" fill="#FBBF24" stroke="#92400E" stroke-width="2.5"/></g>'
+   + '<g class="m-head"><rect x="32" y="10" width="36" height="28" rx="7" fill="#FCD34D" stroke="#92400E" stroke-width="2.5"/>' + hat
+   + '<g class="m-eyes"><circle cx="43" cy="24" r="2.5" fill="#1E293B"/><circle cx="57" cy="24" r="2.5" fill="#1E293B"/></g>'
+   + '<path class="m-shut" d="M40 24q3 3 6 0M54 24q3 3 6 0" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round" fill="none"/>'
+   + '<path class="m-mouth" d="M44 29C46 32 54 32 56 29" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round" fill="none"/>'
+   + '<circle cx="38" cy="27" r="2.5" fill="#F87171" opacity=".6"/><circle cx="62" cy="27" r="2.5" fill="#F87171" opacity=".6"/></g>'
+   + '</g>' + x + '</svg>';
+}
+function mountStatic(){
+  $('gMascot').innerHTML = mascot('free', 76, '#6366F1', true);
+  $('sMascot').innerHTML = mascot('sleep', 130, '#6366F1', true);
+  $('eMascot').innerHTML = mascot('free', 120, '#F97316', false);
+  document.querySelectorAll('.stars').forEach(function(el){ var h = ''; for (var i = 0; i < 28; i++){ var z = 2 + Math.random() * 2; h += '<i style="left:' + (Math.random()*100) + '%;top:' + (Math.random()*70) + '%;animation-delay:' + (Math.random()*3) + 's;width:' + z + 'px;height:' + z + 'px"></i>'; } el.innerHTML = h; });
+}
+
+/* ========== どの画面を出すか ========== */
+function activePlan(){ var p = S.plan; if (p && now() >= p.expireAt){ S.plan = null; save(); return null; } return p; }
+function view(){
+  var p = activePlan(), n = now();
+  if (ui.compose) return 'compose';
+  if (p){ if (n < p.openAt) return 'sealed'; if (!p.openedAt || ui.letter) return 'morning'; return 'day'; }
+  return isNight(n) ? 'compose' : 'day';
+}
+function render(){
+  var v = view(); ui.cur = v;
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.toggle('on', s.id === 's-' + v); });
+  if (v === 'compose') renderCompose();
+  else if (v === 'sealed') renderSealed();
+  else if (v === 'morning') renderMorning();
+  else { daySig = ''; renderDay(); }
+  renderMenu();
+}
+
+/* ========== 夜：予定づくり ========== */
+function canLeave(){ return !!activePlan() || !isNight(now()); }
+function renderCompose(){
+  document.querySelectorAll('#s-compose .pane').forEach(function(p){ p.classList.toggle('on', +p.dataset.step === ui.step); });
+  document.querySelectorAll('.dots i').forEach(function(d, i){ d.classList.toggle('on', i === ui.step); });
+  var back = $('back');
+  if (ui.step === 0){ back.hidden = !canLeave(); back.textContent = '✕'; back.setAttribute('aria-label', '予定づくりを閉じる'); }
+  else { back.hidden = false; back.textContent = '‹'; back.setAttribute('aria-label', '予定にもどる'); }
+  if (ui.step === 0){ drawTimeline(); requestAnimationFrame(function(){ if (ui.cur === 'compose' && ui.step === 0) drawTimeline(); }); if (document.fonts) document.fonts.ready.then(function(){ if (ui.cur === 'compose' && ui.step === 0) drawTimeline(); }); }
+  else {
+    $('letter').value = S.draft.letter;
+    var bl = S.draft.blocks;
+    $('sendSum').textContent = dateText(targetDay(now())) + ' ・ 予定' + bl.length + '件（' + fmt(bl[0].start) + '〜' + fmt(bl[bl.length-1].end) + '）';
+    $('letterChips').innerHTML = LETTERS.map(function(t, i){ return '<button class="chip" data-i="' + i + '">' + esc(t) + '</button>'; }).join('');
+  }
+}
+$('letterChips').onclick = function(e){ var b = e.target.closest('.chip'); if (!b) return; var t = LETTERS[+b.dataset.i]; var el = $('letter'); el.value = el.value ? el.value + '\n' + t : t; S.draft.letter = el.value; save(); };
+$('letter').addEventListener('input', function(){ S.draft.letter = this.value; save(); });
+$('nextBtn').onclick = function(){ if (!S.draft.blocks.length){ toast('まず予定を1つ置こう。空いている時間をタップ'); return; } ui.step = 1; renderCompose(); };
+$('back').onclick = function(){ if (ui.step === 1){ ui.step = 0; renderCompose(); } else { ui.compose = false; render(); } };
+
+function drawTimeline(){
+  var tl = $('tl'), bl = S.draft.blocks, h = '', wrap = $('tlwrap');
+  HH = Math.max(14, (wrap.clientHeight - 20) / (DAY_END - DAY_START));
+  tl.style.height = (DAY_END - DAY_START) * HH + 'px';
+  for (var i = DAY_START; i <= DAY_END; i++){
+    var lab = i % 3 === 0 || HH >= 26;
+    h += '<div class="hr' + (lab ? '' : ' minor') + '" style="top:' + ((i-DAY_START)*HH) + 'px">' + (lab ? '<span>' + i + ':00</span>' : '') + '</div>';
+  }
+  for (var k = DAY_START; k < DAY_END; k++) h += '<button class="zone' + (!bl.length && k === 9 ? ' hint' : '') + '" style="top:' + ((k-DAY_START)*HH) + 'px;height:' + HH + 'px" data-s="' + k + '" aria-label="' + k + ':00に予定を追加"></button>';
+  bl.forEach(function(b){
+    var a = actOf(b), px = Math.max(16, (b.end - b.start) * HH - 2), cls = px < 22 ? ' row tiny' : px < 40 ? ' row' : '';
+    h += '<button class="blk' + cls + (b.id === ui.fresh ? ' fresh' : '') + '" data-id="' + b.id + '" style="top:' + ((b.start-DAY_START)*HH + 1) + 'px;height:' + px + 'px;background:' + a.c + '"><b>' + a.e + ' ' + esc(nameOf(b)) + '</b><small>' + fmt(b.start) + ' – ' + fmt(b.end) + '</small></button>';
+  });
+  tl.innerHTML = h; ui.fresh = null;
+  $('dateChip').textContent = dateText(targetDay(now()));
+  var tot = bl.reduce(function(s, b){ return s + b.end - b.start; }, 0);
+  $('sum').textContent = bl.length ? bl.length + '件の予定 ・ 合計' + durText(tot) : '空いている時間をタップして追加';
+}
+window.addEventListener('resize', function(){ if (ui.cur === 'compose' && ui.step === 0) drawTimeline(); });
+
+/* タイムラインを歩き回るアバター */
+var pet = { x:90, y:0, tx:90, ty:0, dir:1, busy:false, act:'', t:0 };
+function petAct(a){ if (pet.act === a) return; pet.act = a; $('petBody').innerHTML = mascot(a, 50, '#6366F1', true); }
+function petLane(){
+  // いちばん長い空き時間の真ん中を歩く
+  var bl = S.draft.blocks.slice().sort(function(a, b){ return a.start - b.start; }), best = [DAY_START, DAY_END], cur = DAY_START, gap = 0;
+  bl.concat([{ start:DAY_END, end:DAY_END }]).forEach(function(b){ if (b.start - cur > gap){ gap = b.start - cur; best = [cur, b.start]; } cur = Math.max(cur, b.end); });
+  return 10 + ((best[0] + best[1]) / 2 - DAY_START) * HH - 44;
+}
+function petBounds(){ var w = $('tlwrap').clientWidth; return [70, w - 66]; }
+function petPlay(b){
+  var a = actOf(b), bd = petBounds();
+  pet.busy = true; clearTimeout(pet.t);
+  pet.tx = bd[1] - 10; pet.ty = Math.max(0, 10 + (b.start - DAY_START) * HH - 46);
+  pet.dir = 1; petAct('walk');
+  $('petSay').textContent = a.e + ' ' + a.say;
+  pet.t = setTimeout(function(){
+    petAct(a.k); $('petSay').classList.add('on');
+    pet.t = setTimeout(function(){ $('petSay').classList.remove('on'); petAct('walk'); pet.busy = false; pet.dir = -1; }, 2600);
+  }, 700);
+}
+function petTick(){
+  if (ui.cur === 'compose' && ui.step === 0){
+    var bd = petBounds();
+    if (!pet.busy){
+      petAct('walk'); pet.ty = petLane();
+      pet.tx += pet.dir * 0.55;
+      if (pet.tx > bd[1]){ pet.tx = bd[1]; pet.dir = -1; }
+      if (pet.tx < bd[0]){ pet.tx = bd[0]; pet.dir = 1; }
+    }
+    var dx = pet.tx - pet.x;
+    pet.x += pet.busy ? dx * 0.12 : dx; pet.y += (pet.ty - pet.y) * 0.1;
+    var el = $('pet'); el.classList.toggle('left', pet.busy ? dx < -1 : pet.dir < 0);
+    el.style.transform = 'translate(' + pet.x.toFixed(1) + 'px,' + pet.y.toFixed(1) + 'px)';
+  }
+  requestAnimationFrame(petTick);
+}
+requestAnimationFrame(petTick);
+$('tl').addEventListener('click', function(e){
+  var b = e.target.closest('.blk'); if (b){ openSheet(S.draft.blocks.filter(function(x){ return x.id == +b.dataset.id; })[0]); return; }
+  var z = e.target.closest('.zone'); if (z) openSheet(null, +z.dataset.s);
+});
+$('addBtn').onclick = function(){ var last = S.draft.blocks.reduce(function(m, b){ return Math.max(m, b.end); }, 0); openSheet(null, last && last <= 23.5 ? last : 9); };
+
+/* 予定の入力シート */
+function openSheet(b, startH){
+  editing = b ? b.id : null;
+  ed = b ? { start:b.start, end:b.end, a:b.a, title:b.title } : { start:startH, end:Math.min(DAY_END, startH + 1), a:null, title:'' };
+  $('sheetTitle').textContent = b ? '予定を編集' : '予定を追加';
+  $('delBtn').style.display = b ? 'flex' : 'none';
+  $('btitle').value = ed.title;
+  drawActs(); drawTimes();
+  $('backdrop').classList.add('on'); $('sheet').classList.add('on'); $('sheet').scrollTop = 0; $('sheet').focus();
+}
+function closeSheet(){ $('backdrop').classList.remove('on'); $('sheet').classList.remove('on'); }
+function drawActs(){ $('acts').innerHTML = ACTS.map(function(a, i){ return '<button class="act' + (ed.a === i ? ' on' : '') + '" data-i="' + i + '" aria-pressed="' + (ed.a === i) + '"><span>' + a.e + '</span>' + a.n + '</button>'; }).join(''); }
+$('acts').onclick = function(e){ var b = e.target.closest('.act'); if (!b) return; var i = +b.dataset.i, prev = ed.a != null ? ACTS[ed.a].n : '';
+  ed.a = i; if (!$('btitle').value || $('btitle').value === prev) $('btitle').value = ACTS[i].n; drawActs(); };
+function opts(from, to, sel){ var h = ''; for (var t = from; t <= to; t += .5) h += '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + fmt(t) + '</option>'; return h; }
+function drawTimes(){
+  $('selStart').innerHTML = opts(DAY_START, DAY_END - .5, ed.start);
+  $('selEnd').innerHTML = opts(ed.start + .5, DAY_END, ed.end);
+  $('dur').textContent = '合計 ' + durText(ed.end - ed.start);
+  var hit = S.draft.blocks.filter(function(x){ return x.id !== editing && x.start < ed.end && x.end > ed.start; });
+  $('warn').textContent = hit.length ? '⚠ 「' + nameOf(hit[0]) + '」と重なります。決定すると重なる部分が置きかわります' : '';
+}
+$('selStart').onchange = function(){ var d = ed.end - ed.start; ed.start = +this.value; ed.end = Math.min(DAY_END, ed.start + d); drawTimes(); };
+$('selEnd').onchange = function(){ ed.end = +this.value; drawTimes(); };
+$('backdrop').onclick = closeSheet; $('sheetClose').onclick = closeSheet;
+$('delBtn').onclick = function(){
+  var prev = JSON.stringify(S.draft.blocks);
+  S.draft.blocks = S.draft.blocks.filter(function(x){ return x.id !== editing; }); save(); closeSheet(); drawTimeline();
+  toast('予定を削除しました', function(){ S.draft.blocks = JSON.parse(prev); save(); drawTimeline(); });
+};
+$('saveBtn').onclick = function(){
+  var prev = JSON.stringify(S.draft.blocks), cut = false;
+  var nb = { id: editing || S.seq++, start:ed.start, end:ed.end, a:ed.a, title:$('btitle').value.trim() };
+  var out = [];
+  S.draft.blocks.forEach(function(x){
+    if (x.id === nb.id) return;
+    if (x.end <= nb.start || x.start >= nb.end){ out.push(x); return; }
+    cut = true;
+    if (x.start < nb.start) out.push({ id:x.id, start:x.start, end:nb.start, a:x.a, title:x.title });
+    if (x.end > nb.end) out.push({ id:S.seq++, start:nb.end, end:x.end, a:x.a, title:x.title });
+  });
+  out.push(nb); out.sort(function(a, b){ return a.start - b.start; });
+  S.draft.blocks = out; ui.fresh = nb.id; save(); closeSheet(); drawTimeline(); petPlay(nb);
+  if (cut) toast('重なった予定を置きかえました', function(){ S.draft.blocks = JSON.parse(prev); save(); drawTimeline(); });
+};
+
+/* 送信 */
+$('sendBtn').onclick = function(){
+  var n = now(), d0 = targetDay(n);
+  S.plan = { day0:d0, openAt:d0 + MORNING_HOUR*H, expireAt:d0 + 29*H, blocks:JSON.parse(JSON.stringify(S.draft.blocks)), letter:S.draft.letter.trim(), sentAt:n, openedAt:0 };
+  S.draft = { blocks:[], letter:'' }; S.everSent = true; save(); chime('send');
+  $('sending').classList.add('on');
+  setTimeout(function(){ $('sending').classList.remove('on'); ui.compose = false; ui.step = 0; delete $('tl').dataset.scrolled; render(); }, 2100);
+};
+
+/* ========== 送信後 ========== */
+function renderSealed(){
+  var p = S.plan;
+  $('cd1').textContent = minsText(p.openAt - now());
+  $('sentInfo').textContent = dateText(p.day0) + 'の予定' + p.blocks.length + '件' + (p.letter ? 'と手紙' : '') + 'を送信済み';
+}
+$('rewrite').onclick = function(){ S.draft = { blocks:JSON.parse(JSON.stringify(S.plan.blocks)), letter:S.plan.letter }; save(); ui.compose = true; ui.step = 0; render(); };
+
+/* ========== 朝 ========== */
+function listHtml(p, hNow){
+  var sorted = p.blocks.slice().sort(function(a, b){ return a.start - b.start; });
+  return sorted.map(function(b){ var a = actOf(b), st = hNow == null ? '' : hNow >= b.end ? ' done' : hNow >= b.start ? ' now' : '';
+    return '<div class="item' + st + '"><div class="t">' + fmt(b.start) + ' – ' + fmt(b.end) + '</div><div class="e" style="background:' + a.c + '">' + a.e + '</div><div class="n">' + esc(nameOf(b)) + '</div>' + (st === ' now' ? '<span class="pill">いま</span>' : '') + '</div>'; }).join('');
+}
+function renderMorning(){
+  var p = S.plan, opened = !!p.openedAt;
+  $('mEnv').style.display = opened ? 'none' : 'flex'; $('mOpen').style.display = opened ? 'flex' : 'none';
+  if (!opened) return;
+  var band = ''; for (var h = DAY_START; h < DAY_END; h += .5){ var f = p.blocks.filter(function(b){ return h >= b.start && h < b.end; })[0]; band += '<i style="background:' + (f ? actOf(f).c : 'transparent') + '"></i>'; }
+  var d = 0; function r(){ return 'class="reveal" style="animation-delay:' + (d++ * 0.3) + 's"'; }
+  $('mScroll').innerHTML =
+    '<div ' + r() + ' style="display:flex;align-items:center;gap:10px">' + mascot('free', 64, '#F97316', false) + '<div class="mbubble">' + dateText(p.day0) + '、昨日のキミより</div></div>'
+    + (p.letter ? '<div ' + r() + '><div class="paper"><div class="from">💌 昨日の自分から</div><p>' + esc(p.letter) + '</p></div></div>' : '')
+    + '<div ' + r() + '><div class="paper"><div class="from">🗓 昨夜つくった今日</div><div class="band">' + band + '</div><div class="band-lab"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div><div style="margin-top:8px">' + listHtml(p, null) + '</div></div></div>';
+  $('mScroll').scrollTop = 0;
+}
+$('openBtn').onclick = function(){ chime('open'); S.plan.openedAt = now(); save(); ui.letter = true; renderMorning(); };
+$('startBtn').onclick = function(){ ui.letter = false; render(); };
+
+/* ========== 昼：いまの予定 ========== */
+function dayState(p){
+  var hNow = (now() - p.day0) / H, bl = p.blocks.slice().sort(function(a, b){ return a.start - b.start; });
+  var cur = bl.filter(function(b){ return hNow >= b.start && hNow < b.end; })[0] || null;
+  var next = bl.filter(function(b){ return b.start > hNow; })[0] || null;
+  var act = cur ? actOf(cur).k : next ? 'free' : (hNow >= 22 ? 'sleep' : 'done');
+  return { hNow:hNow, cur:cur, next:next, act:act };
+}
+function renderDay(){
+  var p = activePlan(), n = now(), night = isNight(n);
+  $('dHead').textContent = dateText(p ? p.day0 : n) + ' ' + clock(n);
+  $('dFoot').innerHTML = night ? '<button class="btn gold" id="planBtn" style="width:100%">🌙 明日の予定をつくる</button>'
+    : '夜 <b>' + NIGHT_HOUR + ':00</b> になると、明日の予定をつくれます' + (!S.everSent ? '<br><button class="linkbtn" id="planBtn">はじめてなので、いますぐ試す</button>' : '');
+  if (!p){
+    if (daySig !== 'empty'){ daySig = 'empty';
+      $('dBody').innerHTML = '<div class="empty">' + mascot('free', 130, '#10B981', false) + '<h2>今日は手紙がありません</h2><p>夜になったら、明日の自分に<br>予定と手紙を送ろう。</p></div>'; }
+    return;
+  }
+  var s = dayState(p), sig = p.sentAt + '|' + (s.cur ? s.cur.id : '-') + '|' + (s.next ? s.next.id : '-') + '|' + s.act;
+  if (sig !== daySig){
+    daySig = sig;
+    var k, title, say;
+    if (s.cur){ k = 'いま ・ ' + fmt(s.cur.start) + ' – ' + fmt(s.cur.end); title = esc(nameOf(s.cur)); say = actOf(s.cur).say; }
+    else if (s.next){ k = 'いまは自由時間'; title = 'つぎは ' + fmt(s.next.start) + '「' + esc(nameOf(s.next)) + '」'; say = '好きに過ごそう'; }
+    else { k = '今日の予定'; title = 'ぜんぶ終わり！'; say = s.act === 'sleep' ? 'おやすみ…' : 'おつかれさま！'; }
+    $('dBody').innerHTML =
+      '<div class="nowcard"><div class="who">' + mascot(s.act, 104, '#F97316', s.act === 'sleep') + '</div><div class="what"><div class="k">' + k + '</div><h2>' + title + '</h2><p class="say">「' + say + '」</p>'
+      + (s.cur ? '<div class="bar"><i id="nowBar"></i></div>' : '') + '<div class="left" id="nowLeft"></div></div></div>'
+      + (p.letter ? '<div class="charm"><div class="k">🍀 昨日の自分から</div><p>' + esc(p.letter) + '</p></div>' : '')
+      + '<div class="paper"><div class="from">🗓 今日の予定</div>' + listHtml(p, s.hNow) + '</div>';
+  }
+  var left = $('nowLeft');
+  if (s.cur){ left.textContent = 'あと' + minsText((s.cur.end - s.hNow) * H); $('nowBar').style.width = Math.round((s.hNow - s.cur.start) / (s.cur.end - s.cur.start) * 100) + '%'; }
+  else if (s.next) left.textContent = 'あと' + minsText((s.next.start - s.hNow) * H);
+  else left.textContent = '';
+}
+$('dFoot').onclick = function(e){ if (e.target.closest('#planBtn')){ ui.compose = true; ui.step = 0; delete $('tl').dataset.scrolled; render(); } };
+
+/* ========== メニュー ========== */
+function renderMenu(){
+  $('mSound').textContent = S.sound ? '🔔 音：オン' : '🔕 音：オフ';
+  var b = $('simBadge'); b.style.display = S.sim ? 'block' : 'none'; b.textContent = 'デモ ' + clock(now());
+}
+function jumpTo(h, m){ var d = new Date(now()), t = new Date(now()); t.setHours(h, m, 0, 0); if (t <= d) t.setDate(t.getDate() + 1); S.sim = (S.sim || 0) + (t - d); }
+var wipeArmed = false;
+function closeMenu(){ $('menu').classList.remove('on'); $('gear').setAttribute('aria-expanded', 'false'); wipeArmed = false; $('mWipe').textContent = '🗑 データを全部消す'; }
+$('gear').onclick = function(){ var on = $('menu').classList.toggle('on'); this.setAttribute('aria-expanded', on); if (!on) closeMenu(); };
+$('menu').onclick = function(e){
+  var b = e.target.closest('button'); if (!b) return; var m = b.dataset.m;
+  if (m === 'sound'){ S.sound = !S.sound; save(); renderMenu(); return; }
+  if (m === 'wipe'){ if (!wipeArmed){ wipeArmed = true; b.textContent = '⚠ もう一度押すと全部消えます'; return; } S = blank(); ui = { compose:false, letter:false, step:0, fresh:null, cur:'' }; }
+  if (m === 'night') jumpTo(21, 30);
+  if (m === 'morning') jumpTo(7, 0);
+  if (m === 'plus') S.sim = (S.sim || 0) + H;
+  if (m === 'real') S.sim = 0;
+  if (m === 'sample'){ S.draft.blocks = SAMPLE.map(function(x){ return { id:S.seq++, start:x.start, end:x.end, a:x.a, title:x.title }; }); if (!S.draft.letter) S.draft.letter = '朝のコーヒーはゆっくり飲んでね。午後のタルト、楽しみ！'; ui.compose = true; ui.step = 0; delete $('tl').dataset.scrolled; }
+  save(); closeMenu(); render();
+};
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ closeSheet(); closeMenu(); } });
+document.addEventListener('click', function(e){ if ($('menu').classList.contains('on') && !e.target.closest('#menu') && !e.target.closest('#gear')) closeMenu(); });
+
+/* ========== 起動 ========== */
+mountStatic(); render();
+setInterval(function(){
+  var v = view();
+  if (v !== ui.cur){ var was = ui.cur; render(); if (was === 'sealed' && v === 'morning') toast('📩 昨日の自分から手紙が届いたよ！'); }
+  else if (v === 'sealed') renderSealed();
+  else if (v === 'day') renderDay();
+  renderMenu();
+}, 15000);
+</script>
+</body>
+</html>
